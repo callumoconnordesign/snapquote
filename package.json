@@ -1,0 +1,19 @@
+{
+  "name": "jd-leak-agent",
+  "version": "1.0.0",
+  "description": "AI missed-call receptionist for JD Leak Detection — catches missed calls, texts back on WhatsApp/SMS, qualifies leak detection & new water supply jobs, and books provisional visits.",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "qrcode": "^1.5.4",
+    "twilio": "^5.3.0"
+  }
+}
