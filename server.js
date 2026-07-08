@@ -165,22 +165,20 @@ async function maybeNotifyOwner(number, convo) {
 }
 
 // ---------------------------------------------------------------
-// 1) Missed call -> instant text-back pushing to WhatsApp photo triage
+// Missed-call helpers (shared by both modes)
 // ---------------------------------------------------------------
-app.post("/voice/missed-call", guard, async (req, res) => {
-  const caller = req.body.From;
-  console.log("Missed call from:", caller);
-
+function missedCallTwiml() {
   const twiml = new twilio.twiml.VoiceResponse();
   twiml.say(
     { voice: "Polly.Amy", language: "en-GB" },
     `Thanks for calling ${BUSINESS_NAME}. We're out on a job right now, but we're sending you a text this second — send us a photo of the problem and we'll give you a price straight away.`
   );
   twiml.hangup();
-  res.type("text/xml").send(twiml.toString());
+  return twiml.toString();
+}
 
+async function sendMissedCallTextBack(caller) {
   if (!caller || caller === "anonymous") return;
-
   try {
     let channel = "sms";
     if (TWILIO_WHATSAPP_FROM && MISSED_CALL_TEMPLATE_SID) {
@@ -206,6 +204,59 @@ app.post("/voice/missed-call", guard, async (req, res) => {
     console.error("Text-back failed:", err.message);
     await notifyOwner(`⚠️ Missed call from ${caller} but the text-back failed (${err.message}). Call them back.`);
   }
+}
+
+// ---------------------------------------------------------------
+// 1a) FRONT DOOR MODE (recommended when the mobile is also personal):
+//     The Twilio number IS the public business number. Calls ring
+//     through to the owner's mobile; if unanswered, the AI takes over.
+//     Personal calls to the owner's own number are never touched.
+//     Set this as the Voice webhook: /voice/inbound
+// ---------------------------------------------------------------
+app.post("/voice/inbound", guard, (req, res) => {
+  const forwardTo = process.env.FORWARD_TO_NUMBER;
+  if (!forwardTo) {
+    // Not configured to ring through — behave like a straight missed call
+    res.type("text/xml").send(missedCallTwiml());
+    sendMissedCallTextBack(req.body.From);
+    return;
+  }
+  const twiml = new twilio.twiml.VoiceResponse();
+  const dial = twiml.dial({
+    timeout: parseInt(process.env.RING_SECONDS || "18", 10),
+    // Show the business number on the owner's phone so they know to
+    // answer "JD Leak Detection" (save it as a contact). Set
+    // FORWARD_CALLER_ID=caller to show the customer's number instead.
+    callerId: process.env.FORWARD_CALLER_ID === "caller" ? req.body.From : TWILIO_VOICE_NUMBER,
+    action: "/voice/dial-result",
+    method: "POST",
+  });
+  dial.number(forwardTo);
+  res.type("text/xml").send(twiml.toString());
+});
+
+app.post("/voice/dial-result", guard, (req, res) => {
+  const status = req.body.DialCallStatus; // completed | no-answer | busy | failed | canceled
+  console.log(`Dial result from ${req.body.From}: ${status}`);
+  if (status === "completed") {
+    // Owner answered — nothing more to do
+    res.type("text/xml").send("<Response><Hangup/></Response>");
+    return;
+  }
+  // Owner didn't pick up -> AI takes over
+  res.type("text/xml").send(missedCallTwiml());
+  sendMissedCallTextBack(req.body.From);
+});
+
+// ---------------------------------------------------------------
+// 1b) DIVERT MODE (for business-only phones, or as a transition
+//     catch-all): the owner's mobile diverts unanswered calls here.
+//     Set this as the Voice webhook: /voice/missed-call
+// ---------------------------------------------------------------
+app.post("/voice/missed-call", guard, (req, res) => {
+  console.log("Missed call (divert mode) from:", req.body.From);
+  res.type("text/xml").send(missedCallTwiml());
+  sendMissedCallTextBack(req.body.From);
 });
 
 // ---------------------------------------------------------------

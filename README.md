@@ -23,6 +23,27 @@ website widget snippet, and printable QR code.
 
 ## Setup — same as before, one evening
 
+### First, pick your call mode (30 seconds of thought)
+
+**Front Door mode — recommended if your mobile is also your personal phone
+(most SME traders).** The Twilio number becomes your PUBLIC business number
+(Google, website, van). Calls to it ring your mobile showing the business
+number as caller ID — save it as a contact called "BUSINESS CALL" so you know
+to answer professionally. Don't answer within ~18 seconds and the AI takes
+over. Your personal number is never touched and no divert codes are needed.
+- Set the Twilio Voice webhook to: `/voice/inbound`
+- Add variables: `FORWARD_TO_NUMBER` (your mobile), `FORWARD_CALLER_ID=business`, `RING_SECONDS=18`
+- Skip the divert-codes step entirely.
+- Transition tip: old customers still have your personal number — that's fine,
+  those calls behave as normal. Update Google/website/van to the new number
+  and new enquiries flow through the system from day one.
+
+**Divert mode — for business-only phones.** Keep advertising your existing
+mobile; set the `**61*`/`**67*`/`**62*` divert codes so unanswered calls
+forward to the Twilio number. Voice webhook: `/voice/missed-call`. Note:
+ALL unanswered calls get the treatment, including personal ones.
+
+
 Follow Steps 1-6 in the original guide (Anthropic + Twilio + Railway accounts,
 buy a UK number, deploy, point the two webhooks, set your phone divert).
 Everything is identical, plus:
