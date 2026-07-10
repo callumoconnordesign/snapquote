@@ -100,6 +100,37 @@ async function sendToCustomer(number, channel, body) {
 }
 
 async function notifyOwner(text, mediaUrl) {
+  const templateSid = process.env.OWNER_ALERT_TEMPLATE_SID;
+
+  // 1) Approved Utility template — always deliverable, no 24h window needed.
+  //    (Template params can't contain line breaks, so flatten the summary.)
+  if (OWNER_WHATSAPP && TWILIO_WHATSAPP_FROM && templateSid) {
+    try {
+      const flat = text.replace(/\s*\n+\s*/g, " · ").slice(0, 900);
+      await client.messages.create({
+        from: TWILIO_WHATSAPP_FROM,
+        to: OWNER_WHATSAPP,
+        contentSid: templateSid,
+        contentVariables: JSON.stringify({ 1: BUSINESS_NAME, 2: flat }),
+      });
+      // Also try the full multi-line job sheet (with photo). This lands
+      // whenever the owner's 24h window is open — e.g. after they tap
+      // the template alert and reply — and silently no-ops otherwise.
+      client.messages
+        .create({
+          from: TWILIO_WHATSAPP_FROM,
+          to: OWNER_WHATSAPP,
+          body: text,
+          ...(mediaUrl ? { mediaUrl: [mediaUrl] } : {}),
+        })
+        .catch(() => {});
+      return;
+    } catch (err) {
+      console.error("Owner template notify failed:", err.message);
+    }
+  }
+
+  // 2) Freeform WhatsApp (works only inside the 24h window)
   try {
     if (OWNER_WHATSAPP && TWILIO_WHATSAPP_FROM) {
       await client.messages.create({
@@ -113,6 +144,7 @@ async function notifyOwner(text, mediaUrl) {
     throw new Error("WhatsApp owner notify not configured");
   } catch (err) {
     console.error("Owner WhatsApp notify failed:", err.message);
+    // 3) SMS fallback — always works once the voice number can send SMS
     if (OWNER_SMS_FALLBACK) {
       await client.messages
         .create({ from: TWILIO_VOICE_NUMBER, to: OWNER_SMS_FALLBACK, body: text })
